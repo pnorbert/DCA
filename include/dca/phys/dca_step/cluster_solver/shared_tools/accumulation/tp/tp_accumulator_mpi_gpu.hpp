@@ -4,9 +4,9 @@
 // See LICENSE.txt for terms of usage./
 // See CITATION.txt for citation guidelines if you use this code for scientific publications.
 //
-// Author: Peter Doak (doakpw@ornl.gov)
-//         Weile Wei (wwei9@lsu.edu)
+// Author: Weile Wei (wwei9@lsu.edu)
 //         Giovanni Balduzzi (gbalduzz@itp.phys.ethz.ch)
+//         Peter Doak (doakpw@ornl.gov)
 //
 // Implementation of the two particle Green's function computation on the GPU with distrubtion
 // over MPI.
@@ -34,11 +34,11 @@ namespace accumulator {
 // dca::phys::solver::accumulator::
 
 template <class Parameters>
-class TpAccumulator<Parameters, linalg::GPU, DistType::MPI>
+class TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>
     : public TpAccumulator<Parameters, linalg::GPU> {
 private:
   // is there a smarter way to do this in c++17?
-  using this_type = TpAccumulator<Parameters, linalg::GPU, DistType::MPI>;
+  using this_type = TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>;
   using BaseClass = TpAccumulator<Parameters, linalg::GPU>;
 
   using RDmn = typename BaseClass::RDmn;
@@ -123,18 +123,20 @@ private:
   std::array<MPI_Request, 2> recv_requests_{MPI_REQUEST_NULL, MPI_REQUEST_NULL};
   std::array<MPI_Request, 2> send_requests_{MPI_REQUEST_NULL, MPI_REQUEST_NULL};
 
-#ifndef DCA_WITH_CUDA_AWARE_MPI
+#ifndef DCA_HAVE_CUDA_AWARE_MPI
   std::array<std::vector<Complex>, 2> sendbuffer_;
   std::array<std::vector<Complex>, 2> recvbuffer_;
-#endif  // DCA_WITH_CUDA_AWARE_MPI
+#endif  // DCA_HAVE_CUDA_AWARE_MPI
 };
 
 template <class Parameters>
-TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::TpAccumulator(
+TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::TpAccumulator(
     const func::function<std::complex<double>, func::dmn_variadic<NuDmn, NuDmn, KDmn, WDmn>>& G0,
     const Parameters& pars, const int thread_id)
     : BaseClass(G0, pars, thread_id) {
   // each mpi rank only allocates memory of size 1/total_G4_size for its small portion of G4
+
+  // It's not a good idea to have only tp_accumulator know the contents are actual memory size of qyg4
   typename BaseClass::TpDomain tp_dmn;
   std::size_t local_g4_size = tp_dmn.get_size();
 
@@ -160,7 +162,7 @@ TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::TpAccumulator(
 
 template <class Parameters>
 template <class Configuration, typename RealIn>
-float TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::accumulate(
+float TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::accumulate(
     const std::array<linalg::Matrix<RealIn, linalg::GPU>, 2>& M,
     const std::array<Configuration, 2>& configs, const int sign) {
   // typename BaseClass::Profiler profiler("accumulate", "tp-accumulation", __LINE__, BaseClass::thread_id_);
@@ -187,7 +189,7 @@ float TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::accumulate(
 
 template <class Parameters>
 template <class Configuration>
-float TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::accumulate(
+float TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::accumulate(
     const std::array<linalg::Matrix<double, linalg::CPU>, 2>& M,
     const std::array<Configuration, 2>& configs, const int sign) {
   std::array<linalg::Matrix<double, linalg::GPU>, 2> M_dev;
@@ -198,7 +200,7 @@ float TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::accumulate(
 }
 
 template <class Parameters>
-void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::finalize() {
+void TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::finalize() {
   if (BaseClass::finalized_)
     return;
 
@@ -216,7 +218,7 @@ void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::finalize() {
 }
 
 template <class Parameters>
-void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::resetAccumulation(
+void TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::resetAccumulation(
     const unsigned int dca_loop) {
   static dca::util::OncePerLoopFlag flag;
 
@@ -231,7 +233,7 @@ void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::resetAccumulation(
 }
 
 template <class Parameters>
-void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::resetG4() {
+void TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::resetG4() {
   // Note: this method is not thread safe by itself.
   get_G4().resize(G4_.size());
 
@@ -252,7 +254,7 @@ void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::resetG4() {
 }
 
 template <class Parameters>
-float TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::updateG4(const std::size_t channel_index) {
+float TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::updateG4(const std::size_t channel_index) {
   // G4 is stored with the following band convention:
   // b1 ------------------------ b3
   //        |           |
@@ -306,7 +308,7 @@ float TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::updateG4(const std:
 }
 
 template <class Parameters>
-void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::ringG(float& flop) {
+void TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::ringG(float& flop) {
   // get ready for send and receive
 
   for (int s = 0; s < 2; ++s) {
@@ -354,19 +356,19 @@ void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::ringG(float& flop) {
 }
 
 template <class Parameters>
-auto TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::get_G4() -> std::vector<G4DevType>& {
+auto TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::get_G4() -> std::vector<G4DevType>& {
   static std::vector<G4DevType> G4;
   return G4;
 }
 
 template <class Parameters>
-void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::send(const std::array<RMatrix, 2>& data,
+void TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::send(const std::array<RMatrix, 2>& data,
                                                                  int target,
                                                                  std::array<MPI_Request, 2>& request) {
   using dca::parallel::MPITypeMap;
   const auto g_size = data[0].size().first * data[0].size().second;
 
-#ifdef DCA_WITH_CUDA_AWARE_MPI
+#ifdef DCA_HAVE_CUDA_AWARE_MPI
   for (int s = 0; s < 2; ++s) {
     MPI_Isend(data[s].ptr(), g_size, MPITypeMap<Complex>::value(), target, thread_id_ + 1,
               MPI_COMM_WORLD, &request[s]);
@@ -381,16 +383,16 @@ void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::send(const std::arra
     MPI_Isend(sendbuffer_[s].data(), g_size, MPITypeMap<Complex>::value(), target, thread_id_ + 1,
               MPI_COMM_WORLD, &request[s]);
   }
-#endif  // DCA_WITH_CUDA_AWARE_MPI
+#endif  // DCA_HAVE_CUDA_AWARE_MPI
 }
 
 template <class Parameters>
-void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::receive(
+void TpAccumulator<Parameters, linalg::GPU, DistType::LINEAR>::receive(
     std::array<RMatrix, 2>& data, int source, std::array<MPI_Request, 2>& request) {
   using dca::parallel::MPITypeMap;
   const auto g_size = data[0].size().first * data[0].size().second;
 
-#ifdef DCA_WITH_CUDA_AWARE_MPI
+#ifdef DCA_HAVE_CUDA_AWARE_MPI
   for (int s = 0; s < 2; ++s) {
     MPI_Irecv(data[s].ptr(), g_size, MPITypeMap<Complex>::value(), source, thread_id_ + 1,
               MPI_COMM_WORLD, &request[s]);
@@ -408,7 +410,7 @@ void TpAccumulator<Parameters, linalg::GPU, DistType::MPI>::receive(
     cudaMemcpy(data[s].ptr(), recvbuffer_[s].data(), g_size * sizeof(Complex),
                cudaMemcpyHostToDevice);
   }
-#endif  // DCA_WITH_CUDA_AWARE_MPI
+#endif  // DCA_HAVE_CUDA_AWARE_MPI
 }
 
 }  // namespace accumulator

@@ -44,6 +44,7 @@
 #include "dca/phys/dca_step/cluster_solver/shared_tools/accumulation/sp/sp_accumulator_gpu.hpp"
 #include "dca/phys/dca_step/cluster_solver/shared_tools/accumulation/tp/tp_accumulator_gpu.hpp"
 #ifdef DCA_HAVE_MPI
+#include "dca/phys/dca_step/cluster_solver/shared_tools/accumulation/tp/tp_accumulator_mpi_blocked_gpu.hpp"
 #include "dca/phys/dca_step/cluster_solver/shared_tools/accumulation/tp/tp_accumulator_mpi_gpu.hpp"
 #endif // DCA_HAVE_MPI
 #endif  // DCA_HAVE_CUDA
@@ -206,7 +207,7 @@ protected:
 
   std::unique_ptr<ctaux::TpEqualTimeAccumulator<Parameters, Data, Real>> equal_time_accumulator_ptr_;
 
-  accumulator::TpAccumulator<Parameters, device_t, DIST> two_particle_accumulator_;
+  accumulator::TpAccumulator<Parameters, device_t> two_particle_accumulator_;
 
   bool perform_tp_accumulation_ = false;
 };

@@ -14,13 +14,14 @@
 #include <string>
 #include <iostream>
 
+#include "dca/application/dca_loop_dispatch.hpp"
 #include "dca/config/cmake_options.hpp"
 // Defines Concurrency, Threading, ParametersType, DcaData, DcaLoop, and Profiler.
 #include "dca/config/dca.hpp"
 #include "dca/io/json/json_reader.hpp"
 #include "dca/util/git_version.hpp"
 #include "dca/util/modules.hpp"
-#include "dca/application/dca_loop_dispatch.hpp"
+#include "dca/util/signal_handler.hpp"
 
 int main(int argc, char** argv) {
   if (argc < 2) {
@@ -31,6 +32,8 @@ int main(int argc, char** argv) {
   Concurrency concurrency(argc, argv);
 
   try {
+    dca::util::SignalHandler::init(concurrency.id() == concurrency.first());
+
     std::string input_file(argv[1]);
 
     Profiler::start();
@@ -75,14 +78,25 @@ int main(int argc, char** argv) {
     dca::DistType distribution = parameters.get_g4_distribution();
     switch (distribution) {
 #ifdef DCA_HAVE_MPI
-      case dca::DistType::MPI: {
-        DCALoopDispatch<dca::DistType::MPI> dca_loop_dispatch;
+      case dca::DistType::BLOCKED: {
+        DCALoopDispatch<dca::DistType::BLOCKED> dca_loop_dispatch;
         dca_loop_dispatch(parameters, dca_data, concurrency);
       } break;
 #else
-      case dca::DistType::MPI: {
+      case dca::DistType::BLOCKED: {
         throw std::runtime_error(
-            "Input calls for function MPI distribution but DCA is not built with MPI.");
+            "Input calls for function Blocked distribution but DCA is only supports this with MPI.");
+      } break;
+#endif
+#ifdef DCA_HAVE_MPI
+    case dca::DistType::LINEAR: {
+      DCALoopDispatch<dca::DistType::LINEAR> dca_loop_dispatch;
+        dca_loop_dispatch(parameters, dca_data, concurrency);
+      } break;
+#else
+    case dca::DistType::LINEAR: {
+        throw std::runtime_error(
+            "Input calls for function Linear distribution but DCA is only supports this with MPI.");
       } break;
 #endif
       case dca::DistType::NONE: {

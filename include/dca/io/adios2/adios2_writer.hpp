@@ -90,29 +90,29 @@ public:
   template <typename domain_type>
   void execute(const std::string& name, const func::dmn_0<domain_type>& dmn);
 
-  template <typename Scalar, typename domain_type>
-  void execute(const func::function<Scalar, domain_type>& f);
+  template <typename Scalar, typename domain_type, DistType DT>
+  void execute(const func::function<Scalar, domain_type, DT>& f);
 
   /** experimental distributed function interface
    */
-  template <typename Scalar, typename domain_type>
-  void execute(const func::function<Scalar, domain_type>& f, uint64_t start, uint64_t end);
+  template <typename Scalar, typename domain_type, DistType DT>
+  void execute(const func::function<Scalar, domain_type, DT>& f, uint64_t start, uint64_t end);
 
-  template <typename Scalar, typename domain_type>
-  void execute(const func::function<Scalar, domain_type>& f, const std::vector<int>& start,
+  template <typename Scalar, typename domain_type, DistType DT>
+  void execute(const func::function<Scalar, domain_type, DT>& f, const std::vector<int>& start,
                const std::vector<int>& end);
 
-  template <typename Scalar, typename domain_type>
-  void execute(const std::string& name, const func::function<Scalar, domain_type>& f);
+  template <typename Scalar, typename domain_type, DistType DT>
+  void execute(const std::string& name, const func::function<Scalar, domain_type, DT>& f);
 
   /** experimental distributed function interface
    */
-  template <typename Scalar, typename domain_type>
-  void execute(const std::string& name, const func::function<Scalar, domain_type>& f,
+  template <typename Scalar, typename domain_type, DistType DT>
+  void execute(const std::string& name, const func::function<Scalar, domain_type, DT>& f,
                uint64_t start, uint64_t end);
 
-  template <typename Scalar, typename domain_type>
-  void execute(const std::string& name, const func::function<Scalar, domain_type>& f,
+  template <typename Scalar, typename domain_type, DistType DT>
+  void execute(const std::string& name, const func::function<Scalar, domain_type, DT>& f,
                const std::vector<int>& start, const std::vector<int>& end);
 
   template <typename Scalar>
@@ -299,23 +299,23 @@ void ADIOS2Writer::execute(const std::string& name, const func::dmn_0<domain_typ
   close_group();
 }
 
-template <typename Scalar, typename domain_type>
-void ADIOS2Writer::execute(const func::function<Scalar, domain_type>& f) {
+template <typename Scalar, typename domain_type, DistType DT>
+void ADIOS2Writer::execute(const func::function<Scalar, domain_type, DT>& f) {
   if (f.size() == 0)
     return;
   execute(f.get_name(), f);
 }
 
-template <typename Scalar, typename domain_type>
-void ADIOS2Writer::execute(const func::function<Scalar, domain_type>& f, uint64_t start,
+template <typename Scalar, typename domain_type, DistType DT>
+void ADIOS2Writer::execute(const func::function<Scalar, domain_type, DT>& f, uint64_t start,
                            uint64_t end) {
   if (f.size() == 0)
     return;
   execute(f.get_name(), f, start, end);
 }
 
-template <typename Scalar, typename domain_type>
-void ADIOS2Writer::execute(const func::function<Scalar, domain_type>& f,
+template <typename Scalar, typename domain_type, DistType DT>
+void ADIOS2Writer::execute(const func::function<Scalar, domain_type, DT>& f,
                            const std::vector<int>& start, const std::vector<int>& end) {
   if (f.size() == 0)
     return;
@@ -323,8 +323,8 @@ void ADIOS2Writer::execute(const func::function<Scalar, domain_type>& f,
 
 }  // namespace io
 
-template <typename Scalar, typename domain_type>
-void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar, domain_type>& f) {
+template <typename Scalar, typename domain_type, DistType DT>
+void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar, domain_type, DT>& f) {
   if (f.size() == 0)
     return;
 
@@ -332,20 +332,25 @@ void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar,
 
   std::vector<size_t> dims;
   for (int l = 0; l < f.signature(); ++l)
-    dims.push_back(f[l]);
+    dims.push_back(f.get_domain().get_subdomain_size(l));
 
   // be careful --> ADIOS2 is by default row-major, while the function-class is column-major !
   std::reverse(dims.begin(), dims.end());
 
-  write<Scalar>(full_name, dims, f.values());
+  if constexpr ( DT == dca::DistType::BLOCKED ) {
+    execute(name, f, f.get_start_subindex(), f.get_end_subindex());
+  }
+  else {
+    write<Scalar>(full_name, dims, f.values());
 
-  std::reverse(dims.begin(), dims.end());
-  addAttribute(full_name, "name", f.get_name());
-  addAttribute<size_t>(full_name, "domain-sizes", std::vector<size_t>{dims.size()}, dims.data());
+    std::reverse(dims.begin(), dims.end());
+    addAttribute(full_name, "name", f.get_name());
+    addAttribute<size_t>(full_name, "domain-sizes", std::vector<size_t>{dims.size()}, dims.data());
+  }
 }
 
-template <typename Scalar, typename domain_type>
-void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar, domain_type>& f,
+template <typename Scalar, typename domain_type, DistType DT>
+void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar, domain_type, DT>& f,
                            uint64_t start, uint64_t end) {
   if (f.size() == 0)
     return;
@@ -354,7 +359,7 @@ void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar,
 
   std::vector<size_t> dims;
   for (int l = 0; l < f.signature(); ++l)
-    dims.push_back(f[l]);
+    dims.push_back(f.get_domain().get_subdomain_size(l));
 
   // be careful --> ADIOS2 is by default row-major, while the function-class is column-major !
   std::reverse(dims.begin(), dims.end());
@@ -387,8 +392,8 @@ void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar,
   addAttribute<size_t>(full_name, "domain-sizes", std::vector<size_t>{dims.size()}, dims.data());
 }
 
-template <typename Scalar, typename domain_type>
-void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar, domain_type>& f,
+template <typename Scalar, typename domain_type, DistType DT>
+void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar, domain_type, DT>& f,
                            const std::vector<int>& start, const std::vector<int>& end) {
   if (f.size() == 0)
     return;
@@ -396,8 +401,10 @@ void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar,
   const std::string full_name = get_path(name);
 
   std::vector<size_t> dims;
-  for (int l = 0; l < f.signature(); ++l)
-    dims.push_back(f[l]);
+  for (int l = 0; l < f.signature(); ++l) {
+    // working around totally broken function operator[] on ranks > 0
+    dims.push_back(f.get_domain().get_subdomain_size(l));
+  }
 
   int ndim = dims.size();
 
@@ -413,6 +420,7 @@ void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar,
               << " Here they were: dims = " << std::to_string(ndim)
               << " start size = " << std::to_string(start.size())
               << " end size = " << std::to_string(end.size()) << std::endl;
+    // \todo we should be able to throw an exception now with the LINEAR and BLOCKED dist templates.
     return;
   }
 
@@ -433,7 +441,7 @@ void ADIOS2Writer::execute(const std::string& name, const func::function<Scalar,
   }
 
   /* TODO: must pass the correct data pointer here, not f.values() */
-  write<Scalar>(full_name, dims, f.values(), s, c);
+  write<Scalar>(full_name, dims, f.data(), s, c);
 
   std::reverse(dims.begin(), dims.end());
   addAttribute(full_name, "name", f.get_name());
@@ -535,7 +543,6 @@ std::string ADIOS2Writer::VectorToString(const std::vector<T>& v) {
   ss << "]";
   return ss.str();
 }
-
 }  // namespace io
 }  // namespace dca
 
