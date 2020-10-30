@@ -54,6 +54,8 @@
 #include "dca/phys/models/traits.hpp"
 #include "dca/util/timer.hpp"
 
+#include "dca/io/adios2/adios2_writer.hpp"
+
 namespace dca {
 namespace phys {
 // dca::phys::
@@ -108,6 +110,8 @@ public:
   template <typename Writer>
   void write(Writer& writer);
 
+  void writeAdios(adios2::ADIOS& adios);
+  
   void initialize();
   void initializeH0_and_H_i();
   void initialize_G0();
@@ -367,6 +371,23 @@ void DcaData<Parameters>::read(io::Reader& reader) {
 }
 
 template <class Parameters>
+void DcaData<Parameters>::writeAdios(adios2::ADIOS& adios) {
+    if (parameters_.isAccumulatingG4() && parameters_.get_g4_output_format() == "ADIOS2" &&
+           parameters_.get_g4_distribution() != DistType::NONE) {    
+      auto adios2_writer = dca::io::ADIOS2Writer<Concurrency>(adios, &concurrency_, true);
+    std::string file_name = parameters_.get_directory() + parameters_.get_filename_g4();
+    adios2_writer.open_file(file_name, false);
+    adios2_writer.open_group("functions");
+    for (const auto& G4_channel : G4_) {
+      // for now one file per chanel
+      adios2_writer.execute(G4_channel);
+    }
+    adios2_writer.close_group();
+    adios2_writer.close_file();
+  }
+}
+
+template <class Parameters>
 template <typename Writer>
 void DcaData<Parameters>::write(Writer& writer) {
   writer.open_group("functions");
@@ -446,19 +467,7 @@ void DcaData<Parameters>::write(Writer& writer) {
         writer.execute(G4_channel_err);
     }
   }
-  if (parameters_.isAccumulatingG4() && parameters_.get_g4_output_format() == "ADIOS2" &&
-           parameters_.get_g4_distribution() != DistType::NONE) {    
-    auto adios2_writer = dca::io::ADIOS2Writer(&concurrency_, "");
-    std::string file_name = parameters_.get_directory() + parameters_.get_filename_dca();
-    adios2_writer.open_file(file_name, false);
-    writer.open_group("functions");
-    for (const auto& G4_channel : G4_) {
-      // for now one file per chanel
-      writer.execute(G4_channel);
-    }
-    adios2_writer.close_group();
-    adios2_writer.close_file();
-  }
+  std::cout << "G4_accumulating: " << parameters_.isAccumulatingG4() << "  g4_ouput_format: " << parameters_.get_g4_output_format() << '\n';
 
   writer.close_group();
 }

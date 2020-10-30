@@ -100,7 +100,7 @@ protected:
   ParametersType& parameters;
   DcaDataType& MOMS;
   concurrency_type& concurrency;
-
+  adios2::ADIOS adios_;
 private:
   DcaLoopData<ParametersType> DCA_info_struct;
 
@@ -113,7 +113,7 @@ private:
   update_chemical_potential_type update_chemical_potential_obj;
 
   std::string file_name_;
-  std::shared_ptr<io::Writer> output_file_;
+  std::shared_ptr<io::Writer<concurrency_type>> output_file_;
 
   unsigned dca_iteration_ = 0;
 
@@ -121,6 +121,8 @@ protected:
   MCIntegratorType monte_carlo_integrator_;
 };
 
+/** setup objects with loop scope lifetime
+ */
 template <typename ParametersType, typename DcaDataType, typename MCIntegratorType, DistType DIST>
 DcaLoop<ParametersType, DcaDataType, MCIntegratorType, DIST>::DcaLoop(
     ParametersType& parameters_ref, DcaDataType& MOMS_ref, concurrency_type& concurrency_ref)
@@ -133,13 +135,14 @@ DcaLoop<ParametersType, DcaDataType, MCIntegratorType, DIST>::DcaLoop(
       cluster_mapping_obj(parameters),
       lattice_mapping_obj(parameters),
       update_chemical_potential_obj(parameters, MOMS, cluster_mapping_obj),
-      monte_carlo_integrator_(parameters_ref, MOMS_ref) {
+      monte_carlo_integrator_(parameters_ref, MOMS_ref),
+      adios_("", concurrency_ref.get()){
   if (concurrency.id() == concurrency.first()) {
     file_name_ = parameters.get_directory() + parameters.get_filename_dca();
 
-    output_file_ = std::make_shared<io::Writer>(parameters.get_output_format(), false);
+    output_file_ = std::make_shared<io::Writer<concurrency_type>>(concurrency_ref, parameters.get_output_format(), false);
 
-    dca::util::SignalHandler::registerFile(output_file_);
+    dca::util::SignalHandler<concurrency_type>::registerFile(output_file_);
 
     std::cout << "\n\n\t" << __FUNCTION__ << " has started \t" << dca::util::print_time() << "\n\n";
   }
@@ -151,12 +154,15 @@ void DcaLoop<ParametersType, DcaDataType, MCIntegratorType, DIST>::write() {
     std::cout << "\n\n\t\t start writing " << file_name_ << "\t" << dca::util::print_time() << "\n\n";
 
     output_file_->set_verbose(true);
+  }
+  parameters.write(*output_file_);
+  MOMS.write(*output_file_);
 
-    parameters.write(*output_file_);
-    MOMS.write(*output_file_);
-    monte_carlo_integrator_.write(*output_file_);
-    DCA_info_struct.write(*output_file_);
-
+  MOMS.writeAdios(adios_);
+  
+  monte_carlo_integrator_.write(*output_file_);
+  DCA_info_struct.write(*output_file_);
+  if (concurrency.id() == concurrency.first()) {
     output_file_->close_file();
     output_file_.reset();
 
